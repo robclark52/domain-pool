@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Real Estate Ballers - ESPN Tournament Challenge 2026</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Domain Real Estate Ballers</h1>
+        <p class="subtitle">ESPN Tournament Challenge 2026</p>
+    </header>
+
+    <nav id="main-nav">
+        <button class="nav-btn active" data-tab="standings">Leaderboard</button>
+        <button class="nav-btn" data-tab="simulation">Simulation</button>
+        <button class="nav-btn" data-tab="explainer">Model Explainer</button>
+    </nav>
+
+    <main>
+        <!-- ============ LEADERBOARD TAB ============ -->
+        <section id="tab-standings" class="tab-content active">
+            <div id="round-status"></div>
+            <div id="podium"></div>
+            <table id="standings-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Pts</th>
+                        <th>Max</th>
+                        <th>R64</th>
+                        <th>R32</th>
+                        <th>S16</th>
+                        <th>E8</th>
+                        <th>F4</th>
+                        <th>NCG</th>
+                        <th>Final Four</th>
+                        <th>Champ</th>
+                        <th>Runner-Up</th>
+                    </tr>
+                </thead>
+                <tbody id="standings-body"></tbody>
+            </table>
+            <div id="champ-distribution"></div>
+        </section>
+
+        <!-- ============ SIMULATION TAB ============ -->
+        <section id="tab-simulation" class="tab-content">
+            <div class="sim-controls">
+                <div class="control-group">
+                    <label for="sim-start">Starting Point</label>
+                    <select id="sim-start">
+                        <option value="pre">Pre-Tournament</option>
+                        <option value="current" selected>Current (Live Results)</option>
+                        <option value="R64">After Round of 64</option>
+                        <option value="R32">After Round of 32</option>
+                        <option value="S16">After Sweet 16</option>
+                        <option value="E8">After Elite 8</option>
+                        <option value="F4">After Final Four</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="sim-model">Model</label>
+                    <select id="sim-model">
+                        <option value="rpi">RPI Model</option>
+                        <option value="seed">Seed Model</option>
+                    </select>
+                </div>
+                <div class="control-group" id="k-group">
+                    <label for="sim-k">k (sensitivity)</label>
+                    <input type="number" id="sim-k" value="10" min="1" max="30" step="1">
+                </div>
+                <div class="control-group">
+                    <label for="sim-count">Simulations</label>
+                    <select id="sim-count">
+                        <option value="1000">1,000</option>
+                        <option value="5000" selected>5,000</option>
+                        <option value="10000">10,000</option>
+                    </select>
+                </div>
+                <button id="run-sim-btn" onclick="runSimulation()">Run Simulation</button>
+                <button id="run-suite-btn" onclick="runSimSuite()">Run Conditional Suite</button>
+            </div>
+            <div class="model-desc" id="model-desc"></div>
+            <div id="sim-progress" class="hidden">
+                <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+                <span id="progress-text">Running...</span>
+            </div>
+            <div id="sim-results" class="hidden">
+                <h3>Simulation Results</h3>
+                <div id="sim-podium"></div>
+                <table id="sim-table">
+                    <thead><tr id="sim-thead"></tr></thead>
+                    <tbody id="sim-body"></tbody>
+                </table>
+            </div>
+            <div id="sim-suite-results" class="hidden">
+                <h3>Conditional Simulation Results</h3>
+                <p class="suite-desc">Each column forces a different team to win the tournament, showing how it affects each player's expected outcome.</p>
+                <div class="suite-table-wrap">
+                    <table id="suite-table">
+                        <thead id="suite-thead"></thead>
+                        <tbody id="suite-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============ MODEL EXPLAINER TAB ============ -->
+        <section id="tab-explainer" class="tab-content">
+            <div class="explainer-content" id="explainer-content"></div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Data from <a href="" id="espn-link" target="_blank">ESPN Tournament Challenge</a> | Simulation powered by Monte Carlo methods</p>
+    </footer>
+
+    <script src="bracket.js"></script>
+    <script src="picks.js"></script>
+    <script src="results.js"></script>
+    <script src="rpi-data.js"></script>
+    <script src="simulation.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

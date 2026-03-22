@@ -21,7 +21,11 @@
     <main>
         <!-- ============ LEADERBOARD TAB ============ -->
         <section id="tab-standings" class="tab-content active">
-            <div id="round-status"></div>
+            <div class="standings-header">
+                <div id="round-status"></div>
+                <button id="update-results-btn" class="update-results-btn">Update Results</button>
+            </div>
+            <div id="update-status" class="update-status hidden"></div>
             <div id="podium"></div>
             <table id="standings-table">
                 <thead>
@@ -70,7 +74,7 @@
                 </div>
                 <div class="control-group" id="k-group">
                     <label for="sim-k">k (sensitivity)</label>
-                    <input type="number" id="sim-k" value="10" min="1" max="30" step="1">
+                    <input type="number" id="sim-k" value="7" min="1" max="30" step="1">
                 </div>
                 <div class="control-group">
                     <label for="sim-count">Simulations</label>
@@ -112,6 +116,7 @@
         <section id="tab-explainer" class="tab-content">
             <div class="explainer-content" id="explainer-content"></div>
         </section>
+
     </main>
 
     <footer>

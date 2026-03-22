@@ -1,5 +1,367 @@
 // Domain Pool - Main Application
 
+const GITHUB_REPO = 'robclark52/domain-pool';
+const RESULTS_FILE = 'results.js';
+
+// ─── GitHub PAT Management ───────────────────────────────
+function getGitHubPAT() {
+    let pat = localStorage.getItem('domain_pool_github_pat');
+    if (!pat) {
+        pat = prompt(
+            'Enter your GitHub Personal Access Token (PAT) to enable saving results.\n\n' +
+            'The token needs "public_repo" scope. It will be stored in your browser\'s localStorage.\n\n' +
+            'Create one at: https://github.com/settings/tokens'
+        );
+        if (pat) localStorage.setItem('domain_pool_github_pat', pat.trim());
+    }
+    return pat ? pat.trim() : null;
+}
+
+function clearGitHubPAT() {
+    localStorage.removeItem('domain_pool_github_pat');
+}
+
+// ─── GitHub Contents API ─────────────────────────────────
+async function fetchResultsFromGitHub() {
+    try {
+        const url = `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${RESULTS_FILE}?t=${Date.now()}`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.text();
+    } catch (e) {
+        console.error('Failed to fetch results from GitHub:', e);
+        return null;
+    }
+}
+
+async function commitResultsToGitHub(newContent) {
+    const pat = getGitHubPAT();
+    if (!pat) {
+        alert('GitHub PAT is required to save results.');
+        return false;
+    }
+
+    try {
+        // Get current file SHA
+        const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${RESULTS_FILE}`;
+        const getResp = await fetch(apiUrl, {
+            headers: { 'Authorization': `token ${pat}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+
+        let sha = null;
+        if (getResp.ok) {
+            const data = await getResp.json();
+            sha = data.sha;
+        } else if (getResp.status !== 404) {
+            throw new Error(`Failed to get file info: ${getResp.statusText}`);
+        }
+
+        // Commit the file
+        const body = {
+            message: `Update results - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
+            content: btoa(unescape(encodeURIComponent(newContent)))
+        };
+        if (sha) body.sha = sha;
+
+        const putResp = await fetch(apiUrl, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${pat}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (putResp.ok) return true;
+
+        const err = await putResp.json().catch(() => ({}));
+        if (putResp.status === 401) {
+            localStorage.removeItem('domain_pool_github_pat');
+            alert('Invalid GitHub PAT. It has been cleared. Please try again.');
+        } else {
+            alert(`Failed to save: ${err.message || putResp.statusText}`);
+        }
+        return false;
+    } catch (e) {
+        alert(`Error saving to GitHub: ${e.message}`);
+        return false;
+    }
+}
+
+// ─── ESPN Auto-Fetch ─────────────────────────────────────
+
+// Build reverse lookup: lowercase full name → abbreviation
+const ESPN_NAME_TO_ABBREV = {};
+for (const [abbrev, full] of Object.entries(TEAM_NAMES)) {
+    ESPN_NAME_TO_ABBREV[full.toLowerCase()] = abbrev;
+}
+// Add common ESPN display name variants that differ from our TEAM_NAMES
+const ESPN_EXTRA_NAMES = {
+    'uconn': 'CONN', 'connecticut': 'CONN',
+    'michigan state': 'MSU', 'mich. st.': 'MSU', 'mich st': 'MSU',
+    'ohio st': 'OSU', 'ohio st.': 'OSU',
+    'north dakota st': 'NDSU', 'north dakota state': 'NDSU', 'n. dakota st.': 'NDSU',
+    'st. john\'s': 'SJU', 'st john\'s': 'SJU', "saint john's": 'SJU', "st. john's (ny)": 'SJU',
+    'south fla': 'USF', 'south fla.': 'USF', 'usf': 'USF',
+    'california baptist': 'CBU', 'cal baptist': 'CBU',
+    'prairie view a&m': 'PV', 'prairie view': 'PV', 'prairie view a&m': 'PV',
+    'texas a&m': 'TA&M', 'texas am': 'TA&M',
+    'mcneese state': 'MCN', 'mcneese st': 'MCN', 'mcneese st.': 'MCN',
+    'saint mary\'s': 'SMC', "saint mary's (ca)": 'SMC', "st. mary's": 'SMC', "st. mary's (ca)": 'SMC',
+    'long island': 'LIU', 'long island university': 'LIU', 'liu': 'LIU',
+    'utah st': 'USU', 'utah st.': 'USU', 'utah state': 'USU',
+    'high point': 'HPU',
+    "hawai'i": 'HAW', 'hawaii': 'HAW',
+    'kennesaw state': 'KENN', 'kennesaw st': 'KENN', 'kennesaw st.': 'KENN',
+    'miami (fl)': 'MIA', 'miami fl': 'MIA',
+    'miami (oh)': 'MIOH', 'miami oh': 'MIOH', 'miami ohio': 'MIOH',
+    'saint louis': 'SLU', 'st. louis': 'SLU',
+    'texas tech': 'TTU',
+    'iowa state': 'ISU', 'iowa st': 'ISU', 'iowa st.': 'ISU',
+    'wright state': 'WRST', 'wright st': 'WRST', 'wright st.': 'WRST',
+    'santa clara': 'SCU',
+    'tennessee state': 'TNST', 'tennessee st': 'TNST', 'tennessee st.': 'TNST',
+    'northern iowa': 'UNI',
+    'queens': 'QUNS', 'queens (nc)': 'QUNS',
+    'n dakota st': 'NDSU',
+    'n. carolina': 'UNC',
+    'ca baptist': 'CBU'
+};
+for (const [name, abbrev] of Object.entries(ESPN_EXTRA_NAMES)) {
+    ESPN_NAME_TO_ABBREV[name.toLowerCase()] = abbrev;
+}
+
+function matchESPNTeam(espnName, espnSeed) {
+    const lower = espnName.toLowerCase().trim();
+    const stripped = lower.replace(/[^a-z ]/g, '');
+
+    // 1. Direct match on full name or variant
+    if (ESPN_NAME_TO_ABBREV[lower]) return ESPN_NAME_TO_ABBREV[lower];
+    if (ESPN_NAME_TO_ABBREV[stripped]) return ESPN_NAME_TO_ABBREV[stripped];
+
+    // 2. Check if espnName matches any abbreviation directly (ESPN sometimes uses abbrevs)
+    const upper = espnName.toUpperCase().trim();
+    if (TEAM_NAMES[upper]) return upper;
+
+    // 3. Seed-aware partial match: only allow substring match if seeds agree
+    if (espnSeed) {
+        const seedNum = parseInt(espnSeed);
+        for (const [abbrev, full] of Object.entries(TEAM_NAMES)) {
+            const teamSeed = getTeamSeed(abbrev);
+            if (teamSeed !== seedNum) continue;
+            const fullLower = full.toLowerCase();
+            if (fullLower.includes(lower) || lower.includes(fullLower)) return abbrev;
+        }
+    }
+
+    // 4. Fuzzy partial match (word-boundary aligned)
+    for (const [name, abbrev] of Object.entries(ESPN_NAME_TO_ABBREV)) {
+        if (lower.length > name.length) {
+            if (lower.startsWith(name) && (lower[name.length] === ' ' || lower[name.length] === undefined)) return abbrev;
+        } else if (name.length > lower.length) {
+            if (name.startsWith(lower) && (name[lower.length] === ' ' || name[lower.length] === undefined)) return abbrev;
+        }
+    }
+
+    console.warn(`No match for ESPN team: "${espnName}" (seed ${espnSeed})`);
+    return null;
+}
+
+// Map ESPN round note text to our round ranges
+function parseESPNRound(noteText) {
+    if (noteText.includes('1st Round')) return 'R64';
+    if (noteText.includes('2nd Round')) return 'R32';
+    if (noteText.includes('Sweet') || noteText.includes('Regional Semifinal')) return 'S16';
+    if (noteText.includes('Elite') || noteText.includes('Regional Final')) return 'E8';
+    if (noteText.includes('Final Four') || noteText.includes('National Semifinal')) return 'F4';
+    if (noteText.includes('National Championship')) return 'NCG';
+    return null;
+}
+
+// Find which bracket index a game belongs to given the two teams and the round
+function findBracketIndex(team1Abbrev, team2Abbrev, round) {
+    const ranges = { R64: [0, 32], R32: [32, 48], S16: [48, 56], E8: [56, 60], F4: [60, 62], NCG: [62, 63] };
+    const [start, end] = ranges[round] || [0, 63];
+
+    for (let gi = start; gi < end; gi++) {
+        let homeTeam, awayTeam;
+        if (gi < 32) {
+            homeTeam = R64_MATCHUPS[gi][0];
+            awayTeam = R64_MATCHUPS[gi][2];
+        } else {
+            const [f1, f2] = feederGames(gi);
+            homeTeam = RESULTS[f1];
+            awayTeam = RESULTS[f2];
+        }
+        if (!homeTeam || !awayTeam) continue;
+        if ((homeTeam === team1Abbrev && awayTeam === team2Abbrev) ||
+            (homeTeam === team2Abbrev && awayTeam === team1Abbrev)) {
+            return gi;
+        }
+    }
+    return -1;
+}
+
+async function fetchESPNScoreboard() {
+    // Tournament dates for 2026
+    const tourneyDates = [
+        '20260319', '20260320', '20260321', '20260322',
+        '20260326', '20260327', '20260328', '20260329',
+        '20260404', '20260406'
+    ];
+    const allGames = [];
+    for (const d of tourneyDates) {
+        try {
+            const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?dates=${d}&groups=100&limit=50`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            allGames.push(...(data.events || []));
+        } catch (e) { /* skip date if fetch fails */ }
+    }
+    return allGames;
+}
+
+function generateResultsFileContent() {
+    const lines = [];
+    lines.push('// Actual tournament results - UPDATE THIS FILE as games are played');
+    lines.push('// Each element is the winning team\'s abbreviation, or null if game not yet played');
+    lines.push('// Game indices match bracket.js structure:');
+    lines.push('//   R64: 0-31, R32: 32-47, S16: 48-55, E8: 56-59, F4: 60-61, NCG: 62');
+    lines.push(`// Last updated: ${new Date().toISOString()}`);
+    lines.push('');
+    lines.push('const RESULTS = [');
+
+    const regionNames = ['East', 'West', 'South', 'Midwest'];
+    lines.push('    // === R64 (games 0-31) ===');
+    for (let r = 0; r < 4; r++) {
+        const start = r * 8;
+        const vals = [];
+        for (let i = start; i < start + 8; i++) vals.push(RESULTS[i] ? `'${RESULTS[i]}'` : 'null');
+        lines.push(`    ${vals.join(', ')},  // ${regionNames[r]}`);
+    }
+    lines.push('    // === R32 (games 32-47) ===');
+    let r32 = []; for (let i = 32; i < 48; i++) r32.push(RESULTS[i] ? `'${RESULTS[i]}'` : 'null');
+    lines.push(`    ${r32.join(', ')},`);
+    lines.push('    // === S16 (games 48-55) ===');
+    let s16 = []; for (let i = 48; i < 56; i++) s16.push(RESULTS[i] ? `'${RESULTS[i]}'` : 'null');
+    lines.push(`    ${s16.join(', ')},`);
+    lines.push('    // === E8 (games 56-59) ===');
+    let e8 = []; for (let i = 56; i < 60; i++) e8.push(RESULTS[i] ? `'${RESULTS[i]}'` : 'null');
+    lines.push(`    ${e8.join(', ')},`);
+    lines.push('    // === F4 (games 60-61) ===');
+    let f4 = []; for (let i = 60; i < 62; i++) f4.push(RESULTS[i] ? `'${RESULTS[i]}'` : 'null');
+    lines.push(`    ${f4.join(', ')},`);
+    lines.push('    // === NCG (game 62) ===');
+    lines.push(`    ${RESULTS[62] ? `'${RESULTS[62]}'` : 'null'}`);
+    lines.push('];');
+    lines.push('');
+    return lines.join('\n');
+}
+
+function setStatus(msg, isError) {
+    const el = document.getElementById('update-status');
+    el.textContent = msg;
+    el.className = 'update-status' + (isError ? ' error' : '');
+    el.classList.remove('hidden');
+}
+
+async function updateResults() {
+    const btn = document.getElementById('update-results-btn');
+    btn.disabled = true;
+    btn.textContent = 'Fetching scores...';
+    setStatus('Fetching latest scores from ESPN...', false);
+
+    try {
+        const games = await fetchESPNScoreboard();
+        let updated = 0;
+        let matched = 0;
+        const unmatched = [];
+
+        // Process games round by round (R64 first, then R32, etc.) so feeder results are available
+        const roundOrder = ['R64', 'R32', 'S16', 'E8', 'F4', 'NCG'];
+
+        // Bucket games by round
+        const gamesByRound = {};
+        for (const event of games) {
+            const comp = event.competitions[0];
+            if (comp.status.type.name !== 'STATUS_FINAL') continue;
+            const notes = (comp.notes || []).map(n => n.headline).join(' ');
+            const round = parseESPNRound(notes);
+            if (!round) continue;
+            if (!gamesByRound[round]) gamesByRound[round] = [];
+            gamesByRound[round].push(comp);
+        }
+
+        for (const round of roundOrder) {
+            const roundGames = gamesByRound[round] || [];
+            for (const comp of roundGames) {
+                const teams = comp.competitors;
+                const t1 = teams[0], t2 = teams[1];
+                const name1 = t1.team.shortDisplayName || t1.team.displayName;
+                const name2 = t2.team.shortDisplayName || t2.team.displayName;
+                const seed1 = t1.curatedRank?.current || null;
+                const seed2 = t2.curatedRank?.current || null;
+
+                const abbrev1 = matchESPNTeam(name1, seed1);
+                const abbrev2 = matchESPNTeam(name2, seed2);
+
+                if (!abbrev1 || !abbrev2) {
+                    unmatched.push(`${name1} vs ${name2}`);
+                    continue;
+                }
+
+                const winner = t1.winner ? abbrev1 : t2.winner ? abbrev2 : null;
+                if (!winner) continue;
+
+                const gi = findBracketIndex(abbrev1, abbrev2, round);
+                if (gi < 0) {
+                    console.warn(`Could not find bracket slot for ${abbrev1} vs ${abbrev2} in ${round}`);
+                    continue;
+                }
+
+                matched++;
+                if (RESULTS[gi] !== winner) {
+                    RESULTS[gi] = winner;
+                    updated++;
+                }
+            }
+        }
+
+        if (unmatched.length > 0) {
+            console.warn('Unmatched ESPN games:', unmatched);
+        }
+
+        // Re-render standings with new results
+        renderStandings();
+
+        if (updated > 0) {
+            btn.textContent = 'Saving to GitHub...';
+            setStatus(`Found ${matched} completed games, ${updated} new results. Saving...`, false);
+
+            const content = generateResultsFileContent();
+            const saved = await commitResultsToGitHub(content);
+
+            if (saved) {
+                setStatus(`Updated ${updated} results and saved to GitHub.`, false);
+                btn.textContent = `Updated ${updated} results ✓`;
+            } else {
+                setStatus(`Updated ${updated} results locally but failed to save to GitHub.`, true);
+                btn.textContent = 'Save failed';
+            }
+        } else {
+            setStatus(`All ${matched} completed games already up to date.`, false);
+            btn.textContent = 'Already up to date ✓';
+        }
+    } catch (e) {
+        setStatus(`Error: ${e.message}`, true);
+        btn.textContent = 'Update failed';
+        console.error('Update failed:', e);
+    }
+
+    setTimeout(() => { btn.textContent = 'Update Results'; btn.disabled = false; }, 3000);
+}
+
 // ─── Navigation ────────────────────────────────────────
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -389,3 +751,5 @@ function renderExplainer() {
 renderStandings();
 updateModelDesc();
 renderExplainer();
+
+document.getElementById('update-results-btn').addEventListener('click', updateResults);

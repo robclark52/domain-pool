@@ -2,7 +2,7 @@
 // Each element is the winning team's abbreviation, or null if game not yet played
 // Game indices match bracket.js structure:
 //   R64: 0-31, R32: 32-47, S16: 48-55, E8: 56-59, F4: 60-61, NCG: 62
-// Last updated: 2026-03-28T22:04:03.470Z
+// Last updated: 2026-03-29T03:47:50.762Z
 
 const RESULTS = [
     // === R64 (games 0-31) ===
@@ -15,7 +15,7 @@ const RESULTS = [
     // === S16 (games 48-55) ===
     'DUKE', 'CONN', 'IOWA', 'ILL', 'ARIZ', 'PUR', 'MICH', 'TENN',
     // === E8 (games 56-59) ===
-    null, null, null, null,
+    null, 'ILL', 'ARIZ', null,
     // === F4 (games 60-61) ===
     null, null,
     // === NCG (game 62) ===

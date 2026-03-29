@@ -597,20 +597,28 @@ function runSimSuite() {
     document.getElementById('sim-results').classList.add('hidden');
     document.getElementById('sim-suite-results').classList.add('hidden');
 
-    // Get alive contenders (teams that can still win)
+    // Get alive contenders (teams that can still win the championship)
     const contenders = [];
-    // Check which teams from top seeds can still reach NCG
-    const topTeams = ['DUKE', 'FLA', 'ARIZ', 'MICH', 'HOU', 'CONN', 'PUR', 'ISU', 'MSU', 'ILL', 'KU', 'NEB', 'TEX'];
-    for (const t of topTeams) {
-        if (canTeamReachGame(t, 62, getStartingResults(startMode))) {
+    const startResults = getStartingResults(startMode);
+    // Collect every team that has appeared in results or is in an unplayed R64 game
+    const candidateTeams = new Set();
+    for (let i = 0; i < 63; i++) {
+        if (startResults[i]) candidateTeams.add(startResults[i]);
+    }
+    for (let i = 0; i < 32; i++) {
+        if (!startResults[i]) {
+            candidateTeams.add(R64_MATCHUPS[i][0]);
+            candidateTeams.add(R64_MATCHUPS[i][2]);
+        }
+    }
+    // Only keep teams that can still reach the NCG (game 62)
+    for (const t of candidateTeams) {
+        if (canTeamReachGame(t, 62, startResults)) {
             contenders.push(t);
         }
     }
-    // Also add any R32+ winners not in the list
-    for (let i = 32; i < 63; i++) {
-        const r = RESULTS[i];
-        if (r && !contenders.includes(r)) contenders.push(r);
-    }
+    // Sort contenders by seed for consistent column ordering
+    contenders.sort((a, b) => (getTeamSeed(a) || 99) - (getTeamSeed(b) || 99));
 
     setTimeout(() => {
         const suiteResults = {};
